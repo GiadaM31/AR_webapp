@@ -1,0 +1,16 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+
+    // Cartella "gallery": le foto sono leggibili da chiunque (galleria pubblica),
+    // ma si può caricare solo se autenticati e solo un file il cui nome inizia
+    // col proprio uid (coerente con il path usato in useGallery.js).
+    match /gallery/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && fileName.matches(request.auth.uid + '_.*');
+    }
+  }
+}

@@ -1,0 +1,90 @@
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function currentAccountPath() {
+      return /databases/$(database)/documents/accounts/$(request.auth.uid);
+    }
+
+    function isAdmin() {
+      return signedIn() &&
+        exists(currentAccountPath()) &&
+        get(currentAccountPath()).data.keys().hasAny(['roles']) &&
+        get(currentAccountPath()).data.roles is list &&
+        get(currentAccountPath()).data.roles.hasAny(['admin']);
+    }
+
+    function ownsAccount() {
+      return signedIn() &&
+        resource != null &&
+        resource.data.keys().hasAny(['uid']) &&
+        resource.data.uid == request.auth.uid;
+    }
+
+    function accountRolesUntouched() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['roles']);
+    }
+
+    function uidUnchanged() {
+      return request.resource.data.keys().hasAny(['uid']) &&
+        resource.data.keys().hasAny(['uid']) &&
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    function ownsItem() {
+      return signedIn() &&
+        resource != null &&
+        resource.data.keys().hasAny(['uid']) &&
+        resource.data.uid == request.auth.uid;
+    }
+
+    function createsOwnItem() {
+      return signedIn() &&
+        request.resource.data.keys().hasAny(['uid']) &&
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    match /accounts/{accountId} {
+      // Due regole separate (OR): la prima non usa resource → ok su documento assente (getDoc prima del setDoc).
+      allow read: if signedIn() && request.auth.uid == accountId;
+
+      allow read: if isAdmin();
+
+      // Bootstrap account client: uid, roles, name, email (email coerente col token Auth).
+      allow create: if isAdmin() || (
+          signedIn() &&
+          accountId == request.auth.uid &&
+          request.resource.data.keys().hasAll(['uid', 'roles', 'name', 'email']) &&
+          request.resource.data.uid == request.auth.uid &&
+          request.resource.data.roles is list &&
+          !request.resource.data.roles.hasAny(['admin']) &&
+          request.resource.data.name is string &&
+          request.resource.data.email is string &&
+          request.auth.token.email == request.resource.data.email
+        );
+
+      allow update: if isAdmin() ||
+        (
+          ownsAccount() &&
+          uidUnchanged() &&
+          accountRolesUntouched()
+        );
+
+      allow delete: if ownsAccount() || isAdmin();
+    }
+
+    match /items/{itemId} {
+      // Everyone can read items
+      allow read: if true;
+
+      // Only logged-in users with matching uid can create or update their own items
+      allow create: if createsOwnItem();
+      allow update: if ownsItem();
+
+      // Admins can modify or delete any item
+      allow update, delete: if isAdmin();
+    }
+  }
+}
