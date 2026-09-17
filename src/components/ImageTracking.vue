@@ -1,9 +1,10 @@
 <script setup>
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue'
 import LeafFrame from './LeafFrame.vue'
 import WoodSign from './WoodSign.vue'
 import DiscoveryJournal from './DiscoveryJournal.vue'
 import { useDiscoveries } from '../composables/useDiscoveries.js'
+import { useCardsData } from '../composables/useCardsData.js'
 
 // Stato: quale/i target sono attualmente inquadrati (per mostrare un piccolo
 // indicatore testuale utile in fase di test/demo).
@@ -28,50 +29,26 @@ function showDiscoveryToast(name) {
   }, 3000)
 }
 
-// Definisci qui le tue 3 carte: indice del target (deve corrispondere
-// all'ordine con cui le immagini sono state compilate nel file .mind), il
-// video associato, il nome/immagine per il diario e le dimensioni del piano
-// video (in unità AR, non pixel). aspect = larghezza/altezza del video
-// sorgente: regola width/height se i tuoi video non sono 16:9.
-const cards = [
-  {
-    targetIndex: 0,
-    videoId: 'video0',
-    videoSrc: '/videos/card1.mp4',
-    width: 1,
-    height: 0.5625,
-    name: 'La Merenda nel Sottobosco',
-    image: '/cards/card1.png',
-  },
-  {
-    targetIndex: 1,
-    videoId: 'video1',
-    videoSrc: '/videos/card2.mp4',
-    width: 1,
-    height: 0.5625,
-    name: 'Il Laghetto delle Anatre',
-    image: '/cards/card2.png',
-  },
-  {
-    targetIndex: 2,
-    videoId: 'video2',
-    videoSrc: '/videos/card3.mp4',
-    width: 1,
-    height: 0.5625,
-    name: "L'Orto del Coniglio",
-    image: '/cards/card3.png',
-  },
-]
+// I dati delle 3 carte (nome, video, immagine) NON sono più scritti a mano
+// qui nel codice: arrivano da un Google Sheet usato come CMS, così puoi
+// cambiarli senza toccare il codice né rifare il deploy.
+const { cards, isLoading: isLoadingCards, error: cardsError, fetchCards } = useCardsData()
+
+onMounted(fetchCards)
 
 let listeners = []
 
-onMounted(() => {
+/**
+ * Aggancia i listener targetFound/targetLost alle entità AR. Viene
+ * richiamata dopo che sia i dati delle carte (da Google Sheet) sia la scena
+ * <a-scene> sono stati montati nel DOM.
+ */
+function setupTrackingListeners() {
   const scene = sceneEl.value
   if (!scene) return
 
-  // Attende che la scena AR sia pronta prima di agganciare i listener
-  const setup = () => {
-    cards.forEach((card) => {
+  const attach = () => {
+    cards.value.forEach((card) => {
       const targetEl = scene.querySelector(`#target-${card.targetIndex}`)
       const videoEl = document.getElementById(card.videoId)
       if (!targetEl || !videoEl) return
@@ -83,14 +60,10 @@ onMounted(() => {
         videoEl.currentTime = 0
         videoEl.muted = !audioUnlocked.value
         videoEl.play().catch(() => {
-          // Se per qualche motivo il play con audio viene rifiutato,
-          // ripieghiamo su muted per non bloccare comunque la visualizzazione.
           videoEl.muted = true
           videoEl.play().catch(() => {})
         })
 
-        // Se è la prima volta che questa carta viene riconosciuta, la
-        // registriamo nel diario e mostriamo un piccolo avviso.
         const isNewDiscovery = markDiscovered(card.targetIndex)
         if (isNewDiscovery) {
           showDiscoveryToast(card.name)
@@ -110,19 +83,25 @@ onMounted(() => {
   }
 
   if (scene.hasLoaded) {
-    setup()
+    attach()
   } else {
-    scene.addEventListener('loaded', setup)
+    scene.addEventListener('loaded', attach)
   }
+}
+
+// <a-scene> viene creata solo DOPO che i dati sono arrivati dal foglio
+// (v-if="cards.length" nel template), quindi aspettiamo che sia `cards` sia
+// il prossimo giro di rendering (nextTick) siano pronti prima di agganciare
+// i listener sulla scena vera e propria.
+watch(cards, async (value) => {
+  if (value.length === 0) return
+  await nextTick()
+  setupTrackingListeners()
 })
 
 function unlockAudio() {
   audioUnlocked.value = true
-  // "Sblocchiamo" ogni video con un breve play/pause silenzioso: è questo
-  // gesto, innescato dal tap dell'utente, che i browser richiedono per
-  // permettere in seguito un play() con audio (anche se il video non è
-  // ancora inquadrato dalla telecamera in questo momento).
-  cards.forEach((card) => {
+  cards.value.forEach((card) => {
     const videoEl = document.getElementById(card.videoId)
     if (!videoEl) return
     videoEl.muted = false
@@ -130,7 +109,6 @@ function unlockAudio() {
       videoEl.pause()
       videoEl.currentTime = 0
     }).catch(() => {
-      // Se il browser rifiuta comunque, i video ripartiranno muted.
       videoEl.muted = true
     })
   })
@@ -148,80 +126,92 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="ar-wrapper">
-    <!--
-      imageTargetSrc punta al file .mind compilato dalle 3 immagini delle carte
-      (vedi istruzioni per generarlo). Deve stare in /public/targets.mind.
-    -->
-    <a-scene
-      ref="sceneEl"
-      mindar-image="imageTargetSrc: /targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes;"
-      color-space="sRGB"
-      renderer="colorManagement: true; physicallyCorrectLights: true;"
-      vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: true"
-      embedded
-    >
-      <a-assets>
-        <video
-          v-for="card in cards"
-          :key="card.videoId"
-          :id="card.videoId"
-          :src="card.videoSrc"
-          preload="auto"
-          loop
-          playsinline
-          webkit-playsinline
-          crossorigin="anonymous"
-        ></video>
-      </a-assets>
-
-      <a-camera position="0 0 0" look-controls="enabled: false" cursor="fuse: false" raycaster="near: 10; far: 10000;"></a-camera>
-
-      <a-entity
-        v-for="card in cards"
-        :key="card.targetIndex"
-        :id="`target-${card.targetIndex}`"
-        :mindar-image-target="`targetIndex: ${card.targetIndex}`"
-      >
-        <a-video
-          :src="`#${card.videoId}`"
-          :width="card.width"
-          :height="card.height"
-          position="0 0 0"
-          rotation="0 0 0"
-        ></a-video>
-      </a-entity>
-    </a-scene>
-
-    <!-- Overlay obbligatorio: il tap sblocca l'audio dei video per i browser mobile -->
-    <div v-if="!audioUnlocked" class="start-overlay" @click="unlockAudio">
-      <div class="start-card">
-        <LeafFrame :opacity="0.9" />
-        <p class="start-eyebrow">The UnderStory</p>
-        <p class="start-title">Tocca per entrare nel sottobosco</p>
-        <p class="start-subtitle">Attiva fotocamera e audio, poi inquadra una delle 3 carte</p>
-      </div>
+    <!-- Caricamento dati dal Google Sheet -->
+    <div v-if="isLoadingCards" class="status-overlay">
+      <WoodSign>Carico le carte dal diario…</WoodSign>
     </div>
 
-    <!-- Indicatore di debug: rimuovibile, utile durante lo sviluppo -->
-    <WoodSign v-else class="status-badge">
-      <span v-if="activeTargets.size === 0">Inquadra una carta…</span>
-      <span v-else>Carta {{ [...activeTargets].map(i => i + 1).join(', ') }} riconosciuta</span>
-    </WoodSign>
+    <!-- Errore nel caricamento (foglio non raggiungibile/non condiviso) -->
+    <div v-else-if="cardsError" class="status-overlay">
+      <p class="status-error">{{ cardsError }}</p>
+    </div>
 
-    <!-- Pulsante diario delle scoperte -->
-    <button v-if="audioUnlocked" class="journal-btn" @click="isJournalOpen = true" aria-label="Apri il diario">
-      📖
-    </button>
+    <template v-else>
+      <!--
+        imageTargetSrc punta al file .mind compilato dalle 3 immagini delle
+        carte (vedi istruzioni per generarlo). Deve stare in /public/targets.mind.
+      -->
+      <a-scene
+        ref="sceneEl"
+        mindar-image="imageTargetSrc: /targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes;"
+        color-space="sRGB"
+        renderer="colorManagement: true; physicallyCorrectLights: true;"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: true"
+        embedded
+      >
+        <a-assets>
+          <video
+            v-for="card in cards"
+            :key="card.videoId"
+            :id="card.videoId"
+            :src="card.videoSrc"
+            preload="auto"
+            loop
+            playsinline
+            webkit-playsinline
+            crossorigin="anonymous"
+          ></video>
+        </a-assets>
 
-    <!-- Avviso di nuova scoperta -->
-    <Transition name="toast">
-      <div v-if="toastMessage" class="discovery-toast">
-        <WoodSign>{{ toastMessage }}</WoodSign>
+        <a-camera position="0 0 0" look-controls="enabled: false" cursor="fuse: false" raycaster="near: 10; far: 10000;"></a-camera>
+
+        <a-entity
+          v-for="card in cards"
+          :key="card.targetIndex"
+          :id="`target-${card.targetIndex}`"
+          :mindar-image-target="`targetIndex: ${card.targetIndex}`"
+        >
+          <a-video
+            :src="`#${card.videoId}`"
+            :width="card.width"
+            :height="card.height"
+            position="0 0 0"
+            rotation="0 0 0"
+          ></a-video>
+        </a-entity>
+      </a-scene>
+
+      <!-- Overlay obbligatorio: il tap sblocca l'audio dei video per i browser mobile -->
+      <div v-if="!audioUnlocked" class="start-overlay" @click="unlockAudio">
+        <div class="start-card">
+          <LeafFrame :opacity="0.9" />
+          <p class="start-eyebrow">The UnderStory</p>
+          <p class="start-title">Tocca per entrare nel sottobosco</p>
+          <p class="start-subtitle">Attiva fotocamera e audio, poi inquadra una delle 3 carte</p>
+        </div>
       </div>
-    </Transition>
 
-    <DiscoveryJournal v-if="isJournalOpen" :cards="cards" @close="isJournalOpen = false" />
+      <!-- Indicatore di debug: rimuovibile, utile durante lo sviluppo -->
+      <WoodSign v-else class="status-badge">
+        <span v-if="activeTargets.size === 0">Inquadra una carta…</span>
+        <span v-else>Carta {{ [...activeTargets].map(i => i + 1).join(', ') }} riconosciuta</span>
+      </WoodSign>
+
+      <!-- Pulsante diario delle scoperte -->
+      <button v-if="audioUnlocked" class="journal-btn" @click="isJournalOpen = true" aria-label="Apri il diario">
+        📖
+      </button>
+
+      <!-- Avviso di nuova scoperta -->
+      <Transition name="toast">
+        <div v-if="toastMessage" class="discovery-toast">
+          <WoodSign>{{ toastMessage }}</WoodSign>
+        </div>
+      </Transition>
+
+      <DiscoveryJournal v-if="isJournalOpen" :cards="cards" @close="isJournalOpen = false" />
+    </template>
   </div>
 </template>
 
@@ -236,6 +226,26 @@ onBeforeUnmount(() => {
 .ar-wrapper :deep(a-scene) {
   width: 100%;
   height: 100%;
+}
+
+.status-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.status-error {
+  max-width: 22rem;
+  text-align: center;
+  font-family: 'Lora', serif;
+  color: var(--cream);
+  background: var(--berry);
+  border: 2px solid var(--bark-dark);
+  border-radius: 0.5rem;
+  padding: 1rem 1.25rem;
 }
 
 .start-overlay {
