@@ -1,13 +1,10 @@
 <script setup>
-import { ref } from 'vue'
 import LeafFrame from './LeafFrame.vue'
-import { useAuth } from '../composables/useAuth.js'
-import { useGallery } from '../composables/useGallery.js'
 
-// Componente "presentazionale" per la parte di anteprima/download; per la
-// condivisione usa direttamente i composable di auth e galleria, così il
-// genitore (ImageTracking.vue) non deve preoccuparsene.
-const props = defineProps({
+// Componente "presentazionale" puro: non conosce MindAR né la logica di
+// cattura, riceve solo l'immagine via props ed emette eventi verso il
+// genitore. Buon esempio di comunicazione props-down / events-up.
+defineProps({
   imageSrc: {
     type: String,
     required: true,
@@ -15,28 +12,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'download'])
-
-const { currentUser, loginWithGoogle } = useAuth()
-const { isUploading, uploadError, sharePhoto } = useGallery()
-
-const shareState = ref('idle') // 'idle' | 'sharing' | 'done'
-
-async function handleShare() {
-  try {
-    let user = currentUser.value
-    if (!user) {
-      user = await loginWithGoogle()
-    }
-    shareState.value = 'sharing'
-    await sharePhoto(props.imageSrc, user)
-    shareState.value = 'done'
-  } catch (err) {
-    // Il messaggio d'errore leggibile è già in uploadError (composable) o
-    // in err.message se il login viene annullato dall'utente.
-    shareState.value = 'idle'
-    console.error('[capture-modal] condivisione non riuscita', err)
-  }
-}
 </script>
 
 <template>
@@ -50,27 +25,9 @@ async function handleShare() {
           <LeafFrame :opacity="0.85" />
           <p class="modal-eyebrow">The UnderStory</p>
           <img :src="imageSrc" alt="Foto catturata dall'esperienza AR" class="modal-image" />
-
-          <p v-if="shareState === 'done'" class="modal-feedback modal-feedback--ok">
-            Condivisa nella galleria! 🌿
-          </p>
-          <p v-else-if="uploadError" class="modal-feedback modal-feedback--error">
-            {{ uploadError }}
-          </p>
-
           <div class="modal-actions">
             <button class="btn btn-secondary" @click="emit('close')">Chiudi</button>
-            <button class="btn btn-secondary" @click="emit('download')">Scarica</button>
-            <button
-              class="btn btn-primary"
-              :disabled="isUploading || shareState === 'sharing' || shareState === 'done'"
-              @click="handleShare"
-            >
-              <span v-if="isUploading || shareState === 'sharing'">Condivido…</span>
-              <span v-else-if="shareState === 'done'">Fatto ✓</span>
-              <span v-else-if="currentUser">Condividi</span>
-              <span v-else>Accedi e condividi</span>
-            </button>
+            <button class="btn btn-primary" @click="emit('download')">Scarica</button>
           </div>
         </div>
       </div>
@@ -124,43 +81,21 @@ async function handleShare() {
   border: 2px solid var(--bark-dark);
 }
 
-.modal-feedback {
-  margin: 0.75rem 1rem 0;
-  font-family: 'Lora', serif;
-  font-size: 0.85rem;
-  text-align: center;
-}
-
-.modal-feedback--ok {
-  color: var(--forest);
-}
-
-.modal-feedback--error {
-  color: var(--berry);
-}
-
 .modal-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
+  gap: 0.75rem;
   padding: 1.25rem 1rem 1.5rem;
 }
 
 .btn {
   flex: 1;
-  min-width: 7rem;
-  padding: 0.6rem 0.75rem;
+  padding: 0.6rem 1rem;
   border-radius: 0.5rem;
   border: 2px solid var(--bark-dark);
   font-family: 'Caveat', cursive;
   font-size: 1.05rem;
   font-weight: 700;
   cursor: pointer;
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 .btn-primary {

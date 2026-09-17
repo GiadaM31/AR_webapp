@@ -1,35 +1,66 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref } from 'vue'
-import { useArCapture } from '../composables/useArCapture.js'
-import CapturePreviewModal from './CapturePreviewModal.vue'
-import GalleryModal from './GalleryModal.vue'
 import LeafFrame from './LeafFrame.vue'
 import WoodSign from './WoodSign.vue'
-
-const isGalleryOpen = ref(false)
+import DiscoveryJournal from './DiscoveryJournal.vue'
+import { useDiscoveries } from '../composables/useDiscoveries.js'
 
 // Stato: quale/i target sono attualmente inquadrati (per mostrare un piccolo
 // indicatore testuale utile in fase di test/demo).
 const activeTargets = ref(new Set())
 const sceneEl = ref(null)
 
-const { capturedImage, isModalOpen, captureError, capture, closeModal, downloadCapture } =
-  useArCapture(sceneEl)
-
 // L'audio sui browser mobile è bloccato finché l'utente non interagisce
 // almeno una volta con la pagina: mostriamo un overlay "tocca per iniziare"
 // e solo dopo il tap sblocchiamo (unmute) i video.
 const audioUnlocked = ref(false)
 
+const { markDiscovered } = useDiscoveries()
+const isJournalOpen = ref(false)
+const toastMessage = ref('')
+let toastTimeout = null
+
+function showDiscoveryToast(name) {
+  toastMessage.value = `Nuova pagina nel diario: ${name}`
+  clearTimeout(toastTimeout)
+  toastTimeout = setTimeout(() => {
+    toastMessage.value = ''
+  }, 3000)
+}
+
 // Definisci qui le tue 3 carte: indice del target (deve corrispondere
-// all'ordine con cui le immagini sono state compilate nel file .mind),
-// il video associato e le dimensioni del piano video (in unità AR, non pixel).
-// aspect = larghezza/altezza del video sorgente: regola width/height se i
-// tuoi video non sono 16:9.
+// all'ordine con cui le immagini sono state compilate nel file .mind), il
+// video associato, il nome/immagine per il diario e le dimensioni del piano
+// video (in unità AR, non pixel). aspect = larghezza/altezza del video
+// sorgente: regola width/height se i tuoi video non sono 16:9.
 const cards = [
-  { targetIndex: 0, videoId: 'video0', videoSrc: '/videos/card1.mp4', width: 1, height: 0.5625 },
-  { targetIndex: 1, videoId: 'video1', videoSrc: '/videos/card2.mp4', width: 1, height: 0.5625 },
-  { targetIndex: 2, videoId: 'video2', videoSrc: '/videos/card3.mp4', width: 1, height: 0.5625 },
+  {
+    targetIndex: 0,
+    videoId: 'video0',
+    videoSrc: '/videos/card1.mp4',
+    width: 1,
+    height: 0.5625,
+    name: 'La Merenda nel Sottobosco',
+    image: '/cards/card1.png',
+  },
+  {
+    targetIndex: 1,
+    videoId: 'video1',
+    videoSrc: '/videos/card2.mp4',
+    width: 1,
+    height: 0.5625,
+    name: 'Il Laghetto delle Anatre',
+    image: '/cards/card2.png',
+  },
+  {
+    targetIndex: 2,
+    videoId: 'video2',
+    videoSrc: '/videos/card3.mp4',
+    width: 1,
+    height: 0.5625,
+    name: "L'Orto del Coniglio",
+    image: '/cards/card3.png',
+  },
 ]
 
 let listeners = []
@@ -57,6 +88,13 @@ onMounted(() => {
           videoEl.muted = true
           videoEl.play().catch(() => {})
         })
+
+        // Se è la prima volta che questa carta viene riconosciuta, la
+        // registriamo nel diario e mostriamo un piccolo avviso.
+        const isNewDiscovery = markDiscovered(card.targetIndex)
+        if (isNewDiscovery) {
+          showDiscoveryToast(card.name)
+        }
       }
 
       const onLost = () => {
@@ -104,6 +142,7 @@ onBeforeUnmount(() => {
     targetEl.removeEventListener('targetLost', onLost)
   })
   listeners = []
+  clearTimeout(toastTimeout)
 })
 </script>
 
@@ -117,7 +156,7 @@ onBeforeUnmount(() => {
       ref="sceneEl"
       mindar-image="imageTargetSrc: /targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes;"
       color-space="sRGB"
-      renderer="colorManagement: true; physicallyCorrectLights: true; preserveDrawingBuffer: true;"
+      renderer="colorManagement: true; physicallyCorrectLights: true;"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: true"
       embedded
@@ -170,26 +209,19 @@ onBeforeUnmount(() => {
       <span v-else>Carta {{ [...activeTargets].map(i => i + 1).join(', ') }} riconosciuta</span>
     </WoodSign>
 
-    <!-- Pulsante scatta foto: disponibile una volta avviata l'esperienza -->
-    <button v-if="audioUnlocked" class="capture-btn" @click="capture" aria-label="Scatta foto">
-      📷
+    <!-- Pulsante diario delle scoperte -->
+    <button v-if="audioUnlocked" class="journal-btn" @click="isJournalOpen = true" aria-label="Apri il diario">
+      📖
     </button>
 
-    <!-- Pulsante galleria pubblica -->
-    <button v-if="audioUnlocked" class="gallery-btn" @click="isGalleryOpen = true" aria-label="Apri galleria">
-      🖼️
-    </button>
+    <!-- Avviso di nuova scoperta -->
+    <Transition name="toast">
+      <div v-if="toastMessage" class="discovery-toast">
+        <WoodSign>{{ toastMessage }}</WoodSign>
+      </div>
+    </Transition>
 
-    <GalleryModal v-if="isGalleryOpen" @close="isGalleryOpen = false" />
-
-    <p v-if="captureError" class="capture-error">{{ captureError }}</p>
-
-    <CapturePreviewModal
-      v-if="isModalOpen"
-      :image-src="capturedImage"
-      @close="closeModal"
-      @download="downloadCapture"
-    />
+    <DiscoveryJournal v-if="isJournalOpen" :cards="cards" @close="isJournalOpen = false" />
   </div>
 </template>
 
@@ -263,7 +295,7 @@ onBeforeUnmount(() => {
   line-height: 1.45;
 }
 
-.capture-btn {
+.journal-btn {
   position: fixed;
   bottom: 1.5rem;
   right: 1.5rem;
@@ -280,38 +312,6 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.gallery-btn {
-  position: fixed;
-  bottom: 1.5rem;
-  right: 5.5rem;
-  width: 3.5rem;
-  height: 3.5rem;
-  border-radius: 999px;
-  border: 3px solid var(--bark-dark);
-  background: radial-gradient(circle at 35% 30%, #8fae7a 0%, var(--forest) 55%, #45512f 100%);
-  font-size: 1.4rem;
-  box-shadow:
-    0 3px 0 var(--bark-dark),
-    0 6px 16px rgba(0, 0, 0, 0.45);
-  z-index: 15;
-  cursor: pointer;
-}
-
-.capture-error {
-  position: fixed;
-  top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--berry);
-  color: var(--cream);
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
-  font-family: 'Lora', serif;
-  font-size: 0.8rem;
-  z-index: 15;
-  border: 2px solid var(--bark-dark);
-}
-
 .status-badge {
   position: fixed;
   bottom: 1.5rem;
@@ -319,5 +319,24 @@ onBeforeUnmount(() => {
   transform: translateX(-50%);
   z-index: 10;
   pointer-events: none;
+}
+
+.discovery-toast {
+  position: fixed;
+  top: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  pointer-events: none;
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.35s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -12px);
 }
 </style>
