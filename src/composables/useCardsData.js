@@ -70,10 +70,11 @@ export function useCardsData() {
             videoId: `video${targetIndex}`,
             videoSrc: `/videos/${row.video}`,
             image: `/cards/${row.immagine}`,
-            // Dimensioni del piano video in AR: se i tuoi video non sono
-            // 16:9, valuta di aggiungere una colonna "aspect" al foglio.
+            // Formato video verticale: 1080x1920 = 9:16.
+            // Aumentiamo leggermente il piano per riempire meglio il target
+            // ma senza compromettere la stabilità del tracking.
             width: 1,
-            height: 0.5625,
+            height: 1.78,
           }
         })
         .sort((a, b) => a.targetIndex - b.targetIndex)

@@ -53,7 +53,8 @@ defineProps({
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 5;
+  z-index: 0;
+  isolation: isolate;
 }
 
 .corner {

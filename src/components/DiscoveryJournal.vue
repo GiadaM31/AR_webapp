@@ -71,6 +71,7 @@ const { isDiscovered, resetDiscoveries } = useDiscoveries()
 
 .journal-card {
   position: relative;
+  isolation: isolate;
   width: 100%;
   max-width: 30rem;
   max-height: 85vh;
@@ -84,9 +85,28 @@ const { isDiscovered, resetDiscoveries } = useDiscoveries()
   padding: 1.5rem;
 }
 
+@media (max-width: 640px) {
+  .journal-backdrop {
+    padding: 0.75rem;
+  }
+
+  .journal-card {
+    max-width: 100%;
+    padding: 1rem;
+  }
+
+  .journal-header {
+    gap: 0.75rem;
+  }
+
+  .close-btn {
+    font-size: 1.1rem;
+  }
+}
+
 .journal-header {
   position: relative;
-  z-index: 6;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -104,7 +124,7 @@ const { isDiscovered, resetDiscoveries } = useDiscoveries()
 
 .journal-grid {
   position: relative;
-  z-index: 6;
+  z-index: 1;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -159,7 +179,7 @@ const { isDiscovered, resetDiscoveries } = useDiscoveries()
 
 .reset-link {
   position: relative;
-  z-index: 6;
+  z-index: 1;
   display: block;
   margin: 1.5rem auto 0;
   background: none;

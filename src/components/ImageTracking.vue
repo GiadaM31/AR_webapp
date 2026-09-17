@@ -264,6 +264,7 @@ onBeforeUnmount(() => {
 
 .start-card {
   position: relative;
+  isolation: isolate;
   max-width: 22rem;
   width: 100%;
   padding: 2.75rem 1.75rem 2rem;
@@ -276,6 +277,13 @@ onBeforeUnmount(() => {
   text-align: center;
   color: var(--ink);
   overflow: hidden;
+}
+
+.start-eyebrow,
+.start-title,
+.start-subtitle {
+  position: relative;
+  z-index: 1;
 }
 
 .start-eyebrow {
@@ -320,6 +328,7 @@ onBeforeUnmount(() => {
     0 6px 16px rgba(0, 0, 0, 0.45);
   z-index: 15;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .status-badge {
@@ -338,6 +347,42 @@ onBeforeUnmount(() => {
   transform: translateX(-50%);
   z-index: 25;
   pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .start-overlay {
+    padding: 1rem;
+  }
+
+  .start-card {
+    max-width: 18rem;
+    padding: 2.15rem 1.15rem 1.4rem;
+  }
+
+  .start-title {
+    font-size: 1.6rem;
+  }
+
+  .start-subtitle {
+    font-size: 0.8rem;
+  }
+
+  .journal-btn {
+    width: 3rem;
+    height: 3rem;
+    right: 1rem;
+    bottom: 1rem;
+    font-size: 1.3rem;
+  }
+
+  .status-badge {
+    bottom: 0.9rem;
+  }
+
+  .discovery-toast {
+    top: 0.75rem;
+    max-width: calc(100vw - 1.5rem);
+  }
 }
 
 .toast-enter-active,

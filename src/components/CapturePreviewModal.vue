@@ -51,6 +51,7 @@ const emit = defineEmits(['close', 'download'])
 
 .modal-card {
   position: relative;
+  isolation: isolate;
   width: 100%;
   max-width: 26rem;
   background: var(--cream);
@@ -61,6 +62,32 @@ const emit = defineEmits(['close', 'download'])
     0 0 0 6px rgba(166, 96, 62, 0.35),
     0 12px 30px rgba(0, 0, 0, 0.5);
   padding-top: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .modal-backdrop {
+    padding: 0.75rem;
+  }
+
+  .modal-card {
+    max-width: 100%;
+  }
+
+  .modal-actions {
+    gap: 0.5rem;
+    padding: 1rem;
+  }
+
+  .btn {
+    padding: 0.55rem 0.75rem;
+  }
+}
+
+.modal-eyebrow,
+.modal-image,
+.modal-actions {
+  position: relative;
+  z-index: 1;
 }
 
 .modal-eyebrow {
